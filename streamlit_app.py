@@ -96,9 +96,14 @@ with left:
     selected_schema, selected_table = selected_label.split(".", 1)
     columns = get_columns(engine, selected_schema, selected_table)
     column_names = [c.name for c in columns]
+    non_nullable_column_names = [c.name for c in columns if not c.is_nullable]
     text_column_names = [c.name for c in columns if c.is_text]
 
-    key_column = st.selectbox("Stable key column", column_names)
+    if not non_nullable_column_names:
+        st.error("This table has no non-null columns available for the target primary key.")
+        st.stop()
+
+    key_column = st.selectbox("Stable non-null key column", non_nullable_column_names)
     embedding_columns = st.multiselect(
         "Columns used to calculate embeddings",
         column_names,
