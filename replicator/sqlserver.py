@@ -48,6 +48,15 @@ def qualified_name(schema_name: str, table_name: str) -> str:
     return f"{quote_identifier(schema_name)}.{quote_identifier(table_name)}"
 
 
+def to_driver_value(value: object) -> object:
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except ValueError:
+            return value
+    return value
+
+
 def identifiers_equal(left: str, right: str) -> bool:
     return left.casefold() == right.casefold()
 
@@ -322,7 +331,7 @@ def read_source_batch(
     params: list[object] = []
     if last_key is not None:
         predicates.append(f"{key} > %s")
-        params.append(last_key)
+        params.append(to_driver_value(last_key))
     where_sql = f"WHERE {' AND '.join(predicates)}" if predicates else ""
     sql = f"SELECT TOP ({source.batch_size}) * FROM {table} {where_sql} ORDER BY {key}"
     return pd.read_sql_query(sql, conn, params=tuple(params))
@@ -357,7 +366,7 @@ def insert_target_rows(
         vector = clean_row.get(target.vector_column)
         if isinstance(vector, list):
             clean_row[target.vector_column] = json.dumps(vector, ensure_ascii=False)
-        clean_rows.append(tuple(clean_row[col] for col in all_columns))
+        clean_rows.append(tuple(to_driver_value(clean_row[col]) for col in all_columns))
     with conn.cursor() as cursor:
         cursor.executemany(sql, clean_rows)
     return len(clean_rows)
