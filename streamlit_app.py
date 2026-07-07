@@ -39,10 +39,10 @@ def get_engine_from_state():
 
 with st.sidebar:
     st.header("SQL Server")
-    server = st.text_input("Server", value="localhost")
+    server = st.text_input("Server", value="192.192.3.170")
     port = st.number_input("Port", min_value=1, max_value=65535, value=1433)
-    database = st.text_input("Database")
-    username = st.text_input("Username")
+    database = st.text_input("Database", value="CustomerDB")
+    username = st.text_input("Username", value="sa")
     password = st.text_input("Password", type="password")
 
     if st.button("Connect", type="primary", use_container_width=True):
@@ -130,10 +130,10 @@ with right:
 st.subheader("Embedding API")
 api_left, api_right = st.columns(2)
 with api_left:
-    base_url = st.text_input("OpenAI-compatible base URL", value="https://api.openai.com/v1")
-    model_name = st.text_input("Embedding model", value="text-embedding-3-small")
+    base_url = st.text_input("OpenAI-compatible base URL", value="http://llm-proxy:4000/v1")
+    model_name = st.text_input("Embedding model", value="embedding")
 with api_right:
-    api_key = st.text_input("API key", type="password")
+    api_key = st.text_input("API key", value="abcd", type="password")
     dimensions = st.number_input("Embedding dimensions", min_value=1, max_value=1998, value=1536)
 
 preview_col, run_col = st.columns([1, 1])
