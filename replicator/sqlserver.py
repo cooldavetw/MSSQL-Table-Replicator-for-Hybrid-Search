@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes.util
 import json
 from dataclasses import dataclass
 from typing import Iterable
@@ -50,7 +51,16 @@ def qualified_name(schema_name: str, table_name: str) -> str:
     return f"{quote_identifier(schema_name)}.{quote_identifier(table_name)}"
 
 
+def assert_odbc_runtime_available() -> None:
+    if ctypes.util.find_library("odbc") is None:
+        raise RuntimeError(
+            "UnixODBC runtime is not installed. On Ubuntu/WSL, install unixodbc and "
+            "Microsoft ODBC Driver 18 for SQL Server, then restart Streamlit."
+        )
+
+
 def make_engine(config: SqlServerConfig) -> Engine:
+    assert_odbc_runtime_available()
     raw = (
         f"DRIVER={{{config.driver}}};"
         f"SERVER={config.server},{config.port};"
