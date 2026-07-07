@@ -13,6 +13,7 @@ from .sqlserver import (
     create_fulltext_index,
     create_target_table,
     create_vector_index,
+    identifiers_equal,
     get_columns,
     insert_target_rows,
     read_source_batch,
@@ -94,8 +95,12 @@ def run_replication(
     if not source_columns:
         raise RuntimeError("Source table was not found or has no columns.")
 
-    source_column_names = {c.name for c in source_columns}
-    missing = [c for c in [source.key_column, *source.embedding_columns] if c not in source_column_names]
+    source_column_names = [c.name for c in source_columns]
+    missing = [
+        c
+        for c in [source.key_column, *source.embedding_columns]
+        if not any(identifiers_equal(c, source_column) for source_column in source_column_names)
+    ]
     if missing:
         raise RuntimeError(f"Missing source columns: {', '.join(missing)}")
 

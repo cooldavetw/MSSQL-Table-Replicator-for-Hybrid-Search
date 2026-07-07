@@ -48,6 +48,17 @@ def qualified_name(schema_name: str, table_name: str) -> str:
     return f"{quote_identifier(schema_name)}.{quote_identifier(table_name)}"
 
 
+def identifiers_equal(left: str, right: str) -> bool:
+    return left.casefold() == right.casefold()
+
+
+def find_column(columns: Iterable[ColumnInfo], column_name: str) -> ColumnInfo | None:
+    for column in columns:
+        if identifiers_equal(column.name, column_name):
+            return column
+    return None
+
+
 Connection = Any
 
 
@@ -151,8 +162,13 @@ def build_create_target_table_sql(
     target: TargetTableConfig,
     embedding_dimensions: int,
 ) -> str:
+    source_columns = list(source_columns)
+    key_column = find_column(source_columns, source.key_column)
+    if key_column is None:
+        raise ValueError(f"Selected key column '{source.key_column}' was not found in source metadata.")
+
     columns = [
-        column_definition(c, force_not_null=c.name == source.key_column)
+        column_definition(c, force_not_null=identifiers_equal(c.name, key_column.name))
         for c in source_columns
         if c.data_type.lower() not in UNSUPPORTED_COPY_TYPES
     ]
@@ -164,7 +180,7 @@ def build_create_target_table_sql(
             "[embedding_created_at] DATETIME2(3) NULL",
         ]
     )
-    key = quote_identifier(source.key_column)
+    key = quote_identifier(key_column.name)
     target_object = f"{target.schema_name}.{target.table_name}"
     column_sql = ",\n        ".join(columns)
     return f"""
