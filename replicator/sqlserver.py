@@ -120,9 +120,9 @@ def validate_traditional_chinese_fulltext(conn: Connection) -> bool:
         return cursor.fetchone() is not None
 
 
-def column_definition(column: ColumnInfo) -> str:
+def column_definition(column: ColumnInfo, force_not_null: bool = False) -> str:
     data_type = column.data_type.lower()
-    nullable = "NULL" if column.is_nullable else "NOT NULL"
+    nullable = "NOT NULL" if force_not_null else ("NULL" if column.is_nullable else "NOT NULL")
     name = quote_identifier(column.name)
 
     if data_type in {"varchar", "char", "nvarchar", "nchar", "binary", "varbinary"}:
@@ -152,7 +152,7 @@ def build_create_target_table_sql(
     embedding_dimensions: int,
 ) -> str:
     columns = [
-        column_definition(c)
+        column_definition(c, force_not_null=c.name == source.key_column)
         for c in source_columns
         if c.data_type.lower() not in UNSUPPORTED_COPY_TYPES
     ]

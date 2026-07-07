@@ -99,13 +99,6 @@ def run_replication(
     if missing:
         raise RuntimeError(f"Missing source columns: {', '.join(missing)}")
 
-    key_column = next(c for c in source_columns if c.name == source.key_column)
-    if key_column.is_nullable:
-        raise RuntimeError(
-            f"Selected key column '{source.key_column}' is nullable. Choose a non-null unique column "
-            "so the target table can create a primary key."
-        )
-
     yield ReplicationProgress("setup", 0, "Creating target table")
     create_target_table(engine, source_columns, source, target, embedding_config.dimensions)
 
