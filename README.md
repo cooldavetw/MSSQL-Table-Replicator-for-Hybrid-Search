@@ -31,9 +31,10 @@ The app does not persist database passwords or embedding API keys. It keeps them
 
 For large tables, use a stable numeric or comparable key column for batching and resumability.
 
-The target load behavior has two modes:
+The target load behavior has three modes:
 
 - `Create only if empty`: the safe default. The app stops if the target table already contains rows.
 - `Truncate target and rebuild`: deletes all target rows before loading. The UI requires explicit confirmation.
+- `Drop and recreate target table`: drops the target table and indexes before recreating it from the current configuration. Use this after schema changes such as vector dimensions or widened text columns.
 
 Rows with empty embedding text are still copied to the target table, but the app skips the embedding API call and stores `NULL` for embedding metadata and vector values.

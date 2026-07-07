@@ -5,7 +5,7 @@ from typing import Literal
 
 
 FULLTEXT_TRADITIONAL_CHINESE_LCID = 1028
-LoadMode = Literal["create_only_if_empty", "truncate"]
+LoadMode = Literal["create_only_if_empty", "truncate", "drop_recreate"]
 
 
 @dataclass(frozen=True)

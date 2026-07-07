@@ -13,6 +13,7 @@ from .sqlserver import (
     create_fulltext_index,
     create_target_table,
     create_vector_index,
+    drop_target_table,
     identifiers_equal,
     get_columns,
     insert_target_rows,
@@ -104,6 +105,10 @@ def run_replication(
     if missing:
         raise RuntimeError(f"Missing source columns: {', '.join(missing)}")
 
+    if target.load_mode == "drop_recreate":
+        yield ReplicationProgress("setup", 0, "Dropping target table")
+        drop_target_table(engine, target)
+
     yield ReplicationProgress("setup", 0, "Creating target table")
     create_target_table(engine, source_columns, source, target, embedding_config.dimensions)
 
@@ -115,6 +120,8 @@ def run_replication(
     elif target.load_mode == "truncate":
         yield ReplicationProgress("setup", 0, "Truncating target table")
         truncate_target_table(engine, target)
+    elif target.load_mode == "drop_recreate":
+        pass
     else:
         raise RuntimeError(f"Unsupported target load mode: {target.load_mode}")
 

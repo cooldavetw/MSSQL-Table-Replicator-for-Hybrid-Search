@@ -112,7 +112,7 @@ with right:
     target_table = st.text_input("Target table", value=f"{selected_table}_hybrid")
     load_mode_label = st.radio(
         "Load behavior",
-        ["Create only if empty", "Truncate target and rebuild"],
+        ["Create only if empty", "Truncate target and rebuild", "Drop and recreate target table"],
         horizontal=True,
     )
     vector_column = st.text_input("Vector column", value="embedding")
@@ -129,7 +129,7 @@ with api_left:
     model_name = st.text_input("Embedding model", value="embedding")
 with api_right:
     api_key = st.text_input("API key", value="abcd", type="password")
-    dimensions = st.number_input("Embedding dimensions", min_value=1, max_value=1998, value=1536)
+    dimensions = st.number_input("Embedding dimensions", min_value=1, max_value=1998, value=1024)
 
 preview_col, run_col = st.columns([1, 1])
 
@@ -150,15 +150,18 @@ with preview_col:
 
 with run_col:
     truncate_selected = load_mode_label == "Truncate target and rebuild"
-    truncate_confirmed = True
+    drop_recreate_selected = load_mode_label == "Drop and recreate target table"
+    destructive_confirmed = True
     if truncate_selected:
-        truncate_confirmed = st.checkbox("I understand this will delete all rows in the target table.")
+        destructive_confirmed = st.checkbox("I understand this will delete all rows in the target table.")
+    if drop_recreate_selected:
+        destructive_confirmed = st.checkbox("I understand this will drop the target table and all target indexes.")
 
     run_disabled = (
         not embedding_columns
         or not api_key
         or not st.session_state.get("has_zh_tw_fulltext")
-        or (truncate_selected and not truncate_confirmed)
+        or ((truncate_selected or drop_recreate_selected) and not destructive_confirmed)
     )
     if st.button("Create Target and Replicate", type="primary", disabled=run_disabled, use_container_width=True):
         source_config = SourceTableConfig(
@@ -171,7 +174,13 @@ with run_col:
         target_config = TargetTableConfig(
             schema_name=target_schema,
             table_name=target_table,
-            load_mode="truncate" if truncate_selected else "create_only_if_empty",
+            load_mode=(
+                "drop_recreate"
+                if drop_recreate_selected
+                else "truncate"
+                if truncate_selected
+                else "create_only_if_empty"
+            ),
             vector_column=vector_column,
             embedding_text_column=embedding_text_column,
             fulltext_catalog=fulltext_catalog,

@@ -137,6 +137,9 @@ def column_definition(column: ColumnInfo, force_not_null: bool = False) -> str:
     nullable = "NOT NULL" if force_not_null else ("NULL" if column.is_nullable else "NOT NULL")
     name = quote_identifier(column.name)
 
+    if data_type in {"varchar", "nvarchar"} and not force_not_null:
+        return f"{name} {data_type.upper()}(MAX) {nullable}"
+
     if data_type in {"varchar", "char", "nvarchar", "nchar", "binary", "varbinary"}:
         if column.max_length == -1:
             size = "MAX"
@@ -204,6 +207,33 @@ def create_target_table(
     embedding_dimensions: int,
 ) -> None:
     sql = build_create_target_table_sql(source_columns, source, target, embedding_dimensions)
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+
+
+def drop_target_table(conn: Connection, target: TargetTableConfig) -> None:
+    table = qualified_name(target.schema_name, target.table_name)
+    sql = f"""
+IF OBJECT_ID({sql_string_literal(target.schema_name + "." + target.table_name)}, N'U') IS NOT NULL
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM sys.indexes
+        WHERE name = {sql_string_literal(target.vector_index_name)}
+          AND object_id = OBJECT_ID({sql_string_literal(target.schema_name + "." + target.table_name)})
+    )
+        DROP INDEX {quote_identifier(target.vector_index_name)} ON {table};
+
+    IF EXISTS (
+        SELECT 1
+        FROM sys.fulltext_indexes i
+        WHERE i.object_id = OBJECT_ID({sql_string_literal(target.schema_name + "." + target.table_name)})
+    )
+        DROP FULLTEXT INDEX ON {table};
+
+    DROP TABLE {table};
+END
+"""
     with conn.cursor() as cursor:
         cursor.execute(sql)
 

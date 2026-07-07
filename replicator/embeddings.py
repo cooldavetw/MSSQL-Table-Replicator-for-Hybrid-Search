@@ -21,6 +21,8 @@ class EmbeddingClient:
         for vector in vectors:
             if len(vector) != self.config.dimensions:
                 raise ValueError(
-                    f"Embedding dimension mismatch: expected {self.config.dimensions}, got {len(vector)}."
+                    f"Embedding dimension mismatch: configured {self.config.dimensions}, "
+                    f"but model '{self.config.model_name}' returned {len(vector)}. "
+                    "Update the embedding dimensions setting and recreate the target table."
                 )
         return vectors
