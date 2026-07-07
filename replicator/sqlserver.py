@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import ctypes.util
 import json
 from dataclasses import dataclass
-from typing import Iterable
-from urllib.parse import quote_plus
+from typing import Any, Iterable
 
 import pandas as pd
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+import pymssql
 
 from .config import (
     FULLTEXT_TRADITIONAL_CHINESE_LCID,
@@ -51,54 +48,41 @@ def qualified_name(schema_name: str, table_name: str) -> str:
     return f"{quote_identifier(schema_name)}.{quote_identifier(table_name)}"
 
 
-def assert_odbc_runtime_available() -> None:
-    if ctypes.util.find_library("odbc") is None:
-        raise RuntimeError(
-            "UnixODBC runtime is not installed. On Ubuntu/WSL, install unixodbc and "
-            "Microsoft ODBC Driver 18 for SQL Server, then restart Streamlit."
-        )
+Connection = Any
 
 
-def make_engine(config: SqlServerConfig) -> Engine:
-    assert_odbc_runtime_available()
-    raw = (
-        f"DRIVER={{{config.driver}}};"
-        f"SERVER={config.server},{config.port};"
-        f"DATABASE={config.database};"
-        f"UID={config.username};"
-        f"PWD={config.password};"
-        f"Encrypt={'yes' if config.encrypt else 'no'};"
-        f"TrustServerCertificate={'yes' if config.trust_server_certificate else 'no'};"
-    )
-    return create_engine(
-        f"mssql+pyodbc:///?odbc_connect={quote_plus(raw)}",
-        fast_executemany=True,
-        pool_pre_ping=True,
+def make_engine(config: SqlServerConfig) -> Connection:
+    return pymssql.connect(
+        server=config.server,
+        port=str(config.port),
+        user=config.username,
+        password=config.password,
+        database=config.database,
+        charset="UTF-8",
     )
 
 
-def test_connection(engine: Engine) -> str:
-    with engine.connect() as conn:
-        row = conn.execute(text("SELECT @@VERSION AS version")).one()
-        return str(row.version)
+def test_connection(conn: Connection) -> str:
+    with conn.cursor(as_dict=True) as cursor:
+        cursor.execute("SELECT @@VERSION AS version")
+        row = cursor.fetchone()
+        return str(row["version"])
 
 
-def list_tables(engine: Engine) -> list[tuple[str, str]]:
-    sql = text(
-        """
+def list_tables(conn: Connection) -> list[tuple[str, str]]:
+    sql = """
         SELECT TABLE_SCHEMA, TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_TYPE = 'BASE TABLE'
         ORDER BY TABLE_SCHEMA, TABLE_NAME
         """
-    )
-    with engine.connect() as conn:
-        return [(r.TABLE_SCHEMA, r.TABLE_NAME) for r in conn.execute(sql)]
+    with conn.cursor(as_dict=True) as cursor:
+        cursor.execute(sql)
+        return [(r["TABLE_SCHEMA"], r["TABLE_NAME"]) for r in cursor.fetchall()]
 
 
-def get_columns(engine: Engine, schema_name: str, table_name: str) -> list[ColumnInfo]:
-    sql = text(
-        """
+def get_columns(conn: Connection, schema_name: str, table_name: str) -> list[ColumnInfo]:
+    sql = """
         SELECT
             COLUMN_NAME,
             DATA_TYPE,
@@ -108,31 +92,32 @@ def get_columns(engine: Engine, schema_name: str, table_name: str) -> list[Colum
             IS_NULLABLE,
             ORDINAL_POSITION
         FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = :schema_name
-          AND TABLE_NAME = :table_name
+        WHERE TABLE_SCHEMA = %s
+          AND TABLE_NAME = %s
         ORDER BY ORDINAL_POSITION
         """
-    )
-    with engine.connect() as conn:
-        rows = conn.execute(sql, {"schema_name": schema_name, "table_name": table_name})
+    with conn.cursor(as_dict=True) as cursor:
+        cursor.execute(sql, (schema_name, table_name))
+        rows = cursor.fetchall()
         return [
             ColumnInfo(
-                name=r.COLUMN_NAME,
-                data_type=r.DATA_TYPE,
-                max_length=r.CHARACTER_MAXIMUM_LENGTH,
-                numeric_precision=r.NUMERIC_PRECISION,
-                numeric_scale=r.NUMERIC_SCALE,
-                is_nullable=r.IS_NULLABLE == "YES",
-                ordinal_position=r.ORDINAL_POSITION,
+                name=r["COLUMN_NAME"],
+                data_type=r["DATA_TYPE"],
+                max_length=r["CHARACTER_MAXIMUM_LENGTH"],
+                numeric_precision=r["NUMERIC_PRECISION"],
+                numeric_scale=r["NUMERIC_SCALE"],
+                is_nullable=r["IS_NULLABLE"] == "YES",
+                ordinal_position=r["ORDINAL_POSITION"],
             )
             for r in rows
         ]
 
 
-def validate_traditional_chinese_fulltext(engine: Engine) -> bool:
-    sql = text("SELECT 1 FROM sys.fulltext_languages WHERE lcid = :lcid")
-    with engine.connect() as conn:
-        return conn.execute(sql, {"lcid": FULLTEXT_TRADITIONAL_CHINESE_LCID}).first() is not None
+def validate_traditional_chinese_fulltext(conn: Connection) -> bool:
+    sql = "SELECT 1 FROM sys.fulltext_languages WHERE lcid = %s"
+    with conn.cursor() as cursor:
+        cursor.execute(sql, (FULLTEXT_TRADITIONAL_CHINESE_LCID,))
+        return cursor.fetchone() is not None
 
 
 def column_definition(column: ColumnInfo) -> str:
@@ -195,31 +180,34 @@ END
 
 
 def create_target_table(
-    engine: Engine,
+    conn: Connection,
     source_columns: list[ColumnInfo],
     source: SourceTableConfig,
     target: TargetTableConfig,
     embedding_dimensions: int,
 ) -> None:
     sql = build_create_target_table_sql(source_columns, source, target, embedding_dimensions)
-    with engine.begin() as conn:
-        conn.exec_driver_sql(sql)
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+    conn.commit()
 
 
-def target_table_has_rows(engine: Engine, target: TargetTableConfig) -> bool:
-    sql = text(f"SELECT TOP (1) 1 FROM {qualified_name(target.schema_name, target.table_name)}")
-    with engine.connect() as conn:
-        return conn.execute(sql).first() is not None
+def target_table_has_rows(conn: Connection, target: TargetTableConfig) -> bool:
+    sql = f"SELECT TOP (1) 1 FROM {qualified_name(target.schema_name, target.table_name)}"
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+        return cursor.fetchone() is not None
 
 
-def truncate_target_table(engine: Engine, target: TargetTableConfig) -> None:
+def truncate_target_table(conn: Connection, target: TargetTableConfig) -> None:
     sql = f"TRUNCATE TABLE {qualified_name(target.schema_name, target.table_name)}"
-    with engine.begin() as conn:
-        conn.exec_driver_sql(sql)
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+    conn.commit()
 
 
 def create_fulltext_index(
-    engine: Engine,
+    conn: Connection,
     source_columns: list[ColumnInfo],
     source: SourceTableConfig,
     target: TargetTableConfig,
@@ -256,11 +244,12 @@ BEGIN
     WITH CHANGE_TRACKING AUTO;
 END
 """
-    with engine.begin() as conn:
-        conn.exec_driver_sql(sql)
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+    conn.commit()
 
 
-def create_vector_index(engine: Engine, target: TargetTableConfig) -> None:
+def create_vector_index(conn: Connection, target: TargetTableConfig) -> None:
     sql = f"""
 IF NOT EXISTS (
     SELECT 1
@@ -274,29 +263,30 @@ BEGIN
     WITH (METRIC = '{target.vector_metric}', TYPE = 'diskann');
 END
 """
-    with engine.begin() as conn:
-        conn.exec_driver_sql(sql)
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+    conn.commit()
 
 
 def read_source_batch(
-    engine: Engine,
+    conn: Connection,
     source: SourceTableConfig,
     last_key: object | None,
 ) -> pd.DataFrame:
     table = qualified_name(source.schema_name, source.table_name)
     key = quote_identifier(source.key_column)
     predicates: list[str] = []
-    params: dict[str, object] = {}
+    params: list[object] = []
     if last_key is not None:
-        predicates.append(f"{key} > :last_key")
-        params["last_key"] = last_key
+        predicates.append(f"{key} > %s")
+        params.append(last_key)
     where_sql = f"WHERE {' AND '.join(predicates)}" if predicates else ""
-    sql = text(f"SELECT TOP ({source.batch_size}) * FROM {table} {where_sql} ORDER BY {key}")
-    return pd.read_sql_query(sql, engine, params=params)
+    sql = f"SELECT TOP ({source.batch_size}) * FROM {table} {where_sql} ORDER BY {key}"
+    return pd.read_sql_query(sql, conn, params=tuple(params))
 
 
 def insert_target_rows(
-    engine: Engine,
+    conn: Connection,
     rows: list[dict[str, object]],
     source_columns: list[ColumnInfo],
     source: SourceTableConfig,
@@ -313,8 +303,8 @@ def insert_target_rows(
     ]
     all_columns = copied_columns + extra_columns
     insert_columns = ", ".join(quote_identifier(c) for c in all_columns)
-    values = ", ".join(f":{c}" for c in all_columns)
-    sql = text(f"INSERT INTO {qualified_name(target.schema_name, target.table_name)} ({insert_columns}) VALUES ({values})")
+    values = ", ".join(["%s"] * len(all_columns))
+    sql = f"INSERT INTO {qualified_name(target.schema_name, target.table_name)} ({insert_columns}) VALUES ({values})"
     clean_rows = []
     for row in rows:
         clean_row = {col: row.get(col) for col in all_columns}
@@ -324,7 +314,8 @@ def insert_target_rows(
         vector = clean_row.get(target.vector_column)
         if isinstance(vector, list):
             clean_row[target.vector_column] = json.dumps(vector, ensure_ascii=False)
-        clean_rows.append(clean_row)
-    with engine.begin() as conn:
-        conn.execute(sql, clean_rows)
+        clean_rows.append(tuple(clean_row[col] for col in all_columns))
+    with conn.cursor() as cursor:
+        cursor.executemany(sql, clean_rows)
+    conn.commit()
     return len(clean_rows)

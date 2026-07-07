@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd
-from sqlalchemy.engine import Engine
 
 from .config import EmbeddingConfig, SourceTableConfig, TargetTableConfig
 from .embeddings import EmbeddingClient
@@ -20,6 +19,7 @@ from .sqlserver import (
     target_table_has_rows,
     truncate_target_table,
     validate_traditional_chinese_fulltext,
+    Connection,
 )
 
 
@@ -82,7 +82,7 @@ def embed_non_empty_texts(
 
 
 def run_replication(
-    engine: Engine,
+    engine: Connection,
     source: SourceTableConfig,
     target: TargetTableConfig,
     embedding_config: EmbeddingConfig,

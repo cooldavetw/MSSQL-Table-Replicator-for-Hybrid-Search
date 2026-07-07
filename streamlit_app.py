@@ -44,9 +44,6 @@ with st.sidebar:
     database = st.text_input("Database")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    driver = st.text_input("ODBC driver", value="ODBC Driver 18 for SQL Server")
-    encrypt = st.checkbox("Encrypt", value=True)
-    trust_cert = st.checkbox("Trust server certificate", value=True)
 
     if st.button("Connect", type="primary", use_container_width=True):
         try:
@@ -56,9 +53,6 @@ with st.sidebar:
                 database=database,
                 username=username,
                 password=password,
-                driver=driver,
-                encrypt=encrypt,
-                trust_server_certificate=trust_cert,
             )
             engine = get_engine(config)
             version = test_connection(engine)

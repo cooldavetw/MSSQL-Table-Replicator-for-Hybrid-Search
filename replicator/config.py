@@ -15,9 +15,6 @@ class SqlServerConfig:
     username: str
     password: str
     port: int = 1433
-    driver: str = "ODBC Driver 18 for SQL Server"
-    encrypt: bool = True
-    trust_server_certificate: bool = True
 
 
 @dataclass(frozen=True)
