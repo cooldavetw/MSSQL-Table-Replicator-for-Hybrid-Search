@@ -70,6 +70,7 @@ def make_engine(config: SqlServerConfig) -> Connection:
         password=config.password,
         database=config.database,
         charset="UTF-8",
+        autocommit=True,
     )
 
 
@@ -205,7 +206,6 @@ def create_target_table(
     sql = build_create_target_table_sql(source_columns, source, target, embedding_dimensions)
     with conn.cursor() as cursor:
         cursor.execute(sql)
-    conn.commit()
 
 
 def target_table_has_rows(conn: Connection, target: TargetTableConfig) -> bool:
@@ -219,7 +219,6 @@ def truncate_target_table(conn: Connection, target: TargetTableConfig) -> None:
     sql = f"TRUNCATE TABLE {qualified_name(target.schema_name, target.table_name)}"
     with conn.cursor() as cursor:
         cursor.execute(sql)
-    conn.commit()
 
 
 def create_fulltext_index(
@@ -262,7 +261,6 @@ END
 """
     with conn.cursor() as cursor:
         cursor.execute(sql)
-    conn.commit()
 
 
 def create_vector_index(conn: Connection, target: TargetTableConfig) -> None:
@@ -281,7 +279,6 @@ END
 """
     with conn.cursor() as cursor:
         cursor.execute(sql)
-    conn.commit()
 
 
 def read_source_batch(
@@ -333,5 +330,4 @@ def insert_target_rows(
         clean_rows.append(tuple(clean_row[col] for col in all_columns))
     with conn.cursor() as cursor:
         cursor.executemany(sql, clean_rows)
-    conn.commit()
     return len(clean_rows)
