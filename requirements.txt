@@ -1,0 +1,5 @@
+streamlit>=1.36
+pandas>=2.0
+pyodbc>=5.1
+SQLAlchemy>=2.0
+openai>=1.40
