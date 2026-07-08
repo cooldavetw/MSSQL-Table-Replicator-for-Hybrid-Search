@@ -20,6 +20,7 @@ from .sqlserver import (
     read_source_batch,
     target_table_has_rows,
     truncate_target_table,
+    validate_source_key,
     validate_traditional_chinese_fulltext,
     Connection,
 )
@@ -104,6 +105,9 @@ def run_replication(
     ]
     if missing:
         raise RuntimeError(f"Missing source columns: {', '.join(missing)}")
+
+    yield ReplicationProgress("setup", 0, "Validating source key column")
+    validate_source_key(engine, source)
 
     if target.load_mode == "drop_recreate":
         yield ReplicationProgress("setup", 0, "Dropping target table")

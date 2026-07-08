@@ -337,6 +337,35 @@ def read_source_batch(
     return pd.read_sql_query(sql, conn, params=tuple(params))
 
 
+def validate_source_key(conn: Connection, source: SourceTableConfig) -> None:
+    table = qualified_name(source.schema_name, source.table_name)
+    key = quote_identifier(source.key_column)
+    null_sql = f"SELECT TOP (1) 1 FROM {table} WHERE {key} IS NULL"
+    duplicate_sql = f"""
+SELECT TOP (1) {key} AS duplicate_key, COUNT_BIG(*) AS duplicate_count
+FROM {table}
+GROUP BY {key}
+HAVING COUNT_BIG(*) > 1
+ORDER BY duplicate_count DESC
+"""
+    with conn.cursor(as_dict=True) as cursor:
+        cursor.execute(null_sql)
+        if cursor.fetchone() is not None:
+            raise RuntimeError(
+                f"Selected key column '{source.key_column}' contains NULL values. "
+                "Choose a non-null unique key column."
+            )
+
+        cursor.execute(duplicate_sql)
+        duplicate = cursor.fetchone()
+        if duplicate is not None:
+            raise RuntimeError(
+                f"Selected key column '{source.key_column}' contains duplicate value "
+                f"{duplicate['duplicate_key']!r} ({duplicate['duplicate_count']} rows). "
+                "Choose a unique key column."
+            )
+
+
 def insert_target_rows(
     conn: Connection,
     rows: list[dict[str, object]],
